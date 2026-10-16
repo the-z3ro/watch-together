@@ -1,0 +1,13 @@
+# Optional: Render "Blueprint" — lets you create the sync server with one click from this file.
+services:
+  - type: web
+    name: watch-together-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGIN
+        value: "*" # after the first deploy, change to your Vercel URL, e.g. https://watch-together.vercel.app

@@ -1,0 +1,22 @@
+{
+  "name": "watch-together-server",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "socket.io": "^4.8.1",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "socket.io-client": "^4.8.1",
+    "typescript": "^5.7.2"
+  }
+}
