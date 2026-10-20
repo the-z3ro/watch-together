@@ -107,10 +107,28 @@ npx vercel --prod
 | Import / replace / remove shared captions | ✓ | ✓ (same condition) | – |
 | **Sync me** (Hard Sync, only your player) | ✓ | ✓ | ✓ |
 | **Sync everyone** (owner's Hard Sync) | ✓ | only if the owner enables *Controllers can sync everyone* | – |
-| Appoint / revoke controllers, power toggle, transfer ownership, close room | ✓ | – | – |
+| Load a YouTube video / switch back to files | ✓ | only if the owner switched *YouTube* on for them | only if allowed |
+| Appoint / revoke controllers, grant YouTube, power toggle, transfer ownership, close room | ✓ | – | – |
 
 Roles are shown next to each name. Everything is enforced on the server; a revoked controller's late commands are rejected.
 If the owner disconnects for 30 s, a controller (else the longest-present member) becomes owner.
+
+### Phones, tablets and any screen
+The layout is chosen from the real window size: **wide** (laptop: room panel beside the player), **stack** (phone/tablet portrait: player pinned on top,
+People / Media / Room tabs below) and **landscape** (phone sideways: the player fills the screen, the room is a drawer behind the people button).
+The control bar measures its own width and only shows the buttons that fit; everything else lives in the ⚙ settings sheet, so nothing is ever cut off.
+
+Touch gestures (on touch devices): tap = show/hide controls · double-tap right/left = ±10 s (keep tapping for ±20, ±30…) · double-tap middle = play/pause ·
+swipe up/down on the right half = volume (just you) · swipe sideways = scrub (owner/controllers) · pinch = zoom (local files).
+Also: lock controls, screen stays awake while playing, fullscreen turns the phone sideways, Android Back closes sheets, lock-screen/notification play-pause (local files),
+add-to-home-screen app icon. Left-side brightness swipe and hold-for-2× are deliberately **not** included.
+
+### YouTube links
+Paste any YouTube link (watch, youtu.be, shorts, with `?t=` start time). Each person's browser plays its own embedded copy through YouTube's official player;
+only the timeline is shared, exactly like local files. Permission: **only the owner can load YouTube by default**; the owner flips the *YouTube* switch
+next to a person's name to let them load (independent of the Controller role; it can be revoked any time). Controllers can play/pause/seek but not load unless allowed.
+Limits: YouTube only offers fixed speeds, so sync uses small jumps (about 0.75 s tolerance) instead of gentle speed nudging; ads play per viewer and
+sync pauses until they end; live streams and videos that forbid embedding show a clear message; shared captions are not used (turn on YouTube's own controls in ⚙ for its captions).
 
 ### Hard Sync (two different things)
 - **Sync me to the room** — your player jumps to where the room is. Nobody else is touched. Everyone has it; works in fullscreen; shortcut `\`.
@@ -123,7 +141,7 @@ Late joiners and reconnecting clients receive the current track. Captions are on
 
 ### Keyboard (press `?` in the app)
 `K`/`Space` play-pause · `H`/`L` ∓5 s · `J`/`;` ∓15 s · `[`/`]` ∓60 s · `0`/`$` start/end · `\` Hard Sync (me) · `|` sync menu ·
-`F` fullscreen · `C` captions · `M` mute · `+`/`-` volume · `P` picture-in-picture. Ignored while typing; they work in fullscreen.
+`F` fullscreen · `C` captions · `M` mute · `+`/`-`/`↑`/`↓` volume · `P` picture-in-picture. Ignored while typing; they work in fullscreen.
 Shared actions only take effect for the owner/controllers (others get a short explanation).
 
 ### How the sync works
@@ -156,8 +174,8 @@ Plain Socket.IO. Types are in `server/src/protocol.ts` (copied unchanged to `web
 | Client → server | Notes |
 |---|---|
 | `room:create`, `room:join`, `room:leave` | join/rejoin with the same `clientId` |
-| `member:update` | name, file info, ready |
-| `cmd` `{id, cmd}` → ack | `play`, `pause`, `seek`, `rate`, `hardSyncAll`, `captions:set`, `captions:clear`, `role:set`, `settings`, `owner:transfer`, `room:close` |
+| `member:update` | name, file info, ready, mediaIssue |
+| `cmd` `{id, cmd}` → ack | `play`, `pause`, `seek`, `rate`, `hardSyncAll`, `captions:set`, `captions:clear`, `role:set`, `settings`, `owner:transfer`, `room:close`, `media:youtube`, `media:file`, `member:grant` |
 | `ping:time`, `state:get`, `captions:get` | clock offset, resync, caption recovery |
 
 Server → client: `room:state` (full snapshot with `epoch`/`rev`), `captions:data`, `room:closed`. The sync maths is pure and lives in

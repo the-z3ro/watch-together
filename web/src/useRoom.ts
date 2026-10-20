@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import { SERVER, getClientId, uid, type Sock } from './api.js';
 import { measureOffset } from './engine.js';
 import { judgeSnapshot } from './versions.js';
-import type { CaptionCue, CaptionData, CaptionMeta, CmdResult, Command, CommandBody, FileInfo, RoomSnapshot } from './protocol.js';
+import type { CaptionCue, CaptionData, CaptionMeta, CmdResult, Command, CommandBody, FileInfo, MediaIssue, RoomSnapshot } from './protocol.js';
 
 export type Status =
   | 'connecting'
@@ -23,6 +23,7 @@ interface Options {
   onToast: (text: string, kind: ToastKind) => void;
   /** Used to re-create the room at the right place after a server restart (owner only). */
   getPlayback: () => { position: number; playing: boolean; rate: number };
+  /** Optional: kept for symmetry; media is read from the last snapshot. */
 }
 
 /** Owns the socket for one room: ordered snapshots, idempotent commands, caption recovery, reconnect/restart handling. */
@@ -137,7 +138,7 @@ export function useRoom(roomId: string, name: string, opts: Options) {
       const wasOwner = roomRef.current?.ownerId === clientId;
       if (wasOwner) {
         // Bring the same code back at the position we are at, then rejoin as usual.
-        const restore = optsRef.current.getPlayback();
+        const restore = { ...optsRef.current.getPlayback(), media: roomRef.current?.media };
         s.emit('room:create', { clientId, name: me.current.name, roomId, restore }, (c) => {
           if (!alive) return;
           if (c.ok) {
@@ -274,6 +275,10 @@ export function useRoom(roomId: string, name: string, opts: Options) {
       setSettings: (s: { controllerPower?: boolean; controllersCanSyncAll?: boolean }) => send({ type: 'settings', ...s }),
       transferOwner: (memberId: string) => send({ type: 'owner:transfer', memberId }),
       closeRoom: () => send({ type: 'room:close' }),
+      loadYoutube: (videoId: string, startAt: number) => send({ type: 'media:youtube', videoId, startAt }),
+      useFile: () => send({ type: 'media:file' }),
+      grantMedia: (memberId: string, canLoadMedia: boolean) => send({ type: 'member:grant', memberId, canLoadMedia }),
+      setMediaIssue: (mediaIssue: MediaIssue | null) => sockRef.current?.emit('member:update', { mediaIssue }),
     }),
     [send, refresh, serverNow, retryCaptions],
   );

@@ -10,6 +10,8 @@ const BADGE = {
   waiting: { t: 'No file yet', c: 'idle' },
 } as const;
 
+const ISSUE = { blocked: 'Embedding blocked', unavailable: 'Can’t play it', live: 'Live stream' } as const;
+
 function reference(room: RoomSnapshot, meId: string): FileInfo | null {
   const me = room.members.find((m) => m.id === meId);
   const owner = room.members.find((m) => m.id === room.ownerId);
@@ -19,6 +21,13 @@ function reference(room: RoomSnapshot, meId: string): FileInfo | null {
 /** One-line summary: does everyone have the same video? */
 export function summary(room: RoomSnapshot, meId: string): { c: 'ok' | 'warn' | 'bad' | 'idle'; t: string } {
   const online = room.members.filter((m) => m.online);
+  if (room.media.kind === 'youtube') {
+    const bad = online.filter((m) => m.mediaIssue).map((m) => m.name);
+    if (bad.length) return { c: 'bad', t: `${bad.join(', ')} can’t play this video` };
+    const notReady = online.filter((m) => !m.ready).map((m) => m.name);
+    if (notReady.length) return { c: 'idle', t: `Waiting for ${notReady.join(', ')}` };
+    return { c: 'ok', t: 'Everyone is ready' };
+  }
   const ref = reference(room, meId);
   if (!ref) return { c: 'idle', t: 'Load a video to begin' };
   const states = online.map((m) => compareFiles(ref, m.file));
@@ -41,12 +50,14 @@ export default function Members({ room, meId, api, onError }: Props) {
   const isOwner = room.ownerId === meId;
   const ref = reference(room, meId);
   const power = room.settings.controllerPower;
+  const yt = room.media.kind === 'youtube';
   const act = (p: Promise<{ ok: boolean; message?: string }>) => void p.then((r) => !r.ok && onError(r.message ?? 'That didn’t work.'));
 
   return (
     <ul className="members">
       {room.members.map((m) => {
         const b = BADGE[compareFiles(ref, m.file)];
+        const issue = m.mediaIssue ? ISSUE[m.mediaIssue] : null;
         const you = m.id === meId;
         const ownerRow = m.id === room.ownerId;
         return (
@@ -70,7 +81,9 @@ export default function Members({ room, meId, api, onError }: Props) {
                   </span>
                 )}
               </div>
-              {m.file ? (
+              {yt ? (
+                <div className="file">{m.online ? 'Watching on YouTube' : 'Disconnected'}</div>
+              ) : m.file ? (
                 <div className="file" title={m.file.name}>
                   {m.file.name}
                   <br />
@@ -80,7 +93,9 @@ export default function Members({ room, meId, api, onError }: Props) {
                 <div className="file">{m.online ? 'Hasn’t loaded a video' : 'Disconnected'}</div>
               )}
               <div className="tags">
-                <span className={'tag ' + b.c}>{b.t}</span>
+                {!yt && <span className={'tag ' + b.c}>{b.t}</span>}
+                {issue && <span className="tag bad">{issue}</span>}
+                {m.canLoadMedia && !ownerRow && <span className="tag ok" title="Can load YouTube videos">Can load YouTube</span>}
                 {m.ready && <span className="tag ok">Ready</span>}
               </div>
             </div>
@@ -90,6 +105,11 @@ export default function Members({ room, meId, api, onError }: Props) {
                   <input type="checkbox" checked={m.role === 'controller'} onChange={(e) => act(api.setRole(m.id, e.target.checked ? 'controller' : 'participant'))} />
                   <span />
                   <small>controller</small>
+                </label>
+                <label className="switch" title="Allow this person to load YouTube videos for the whole room">
+                  <input type="checkbox" checked={m.canLoadMedia} onChange={(e) => act(api.grantMedia(m.id, e.target.checked))} />
+                  <span />
+                  <small>YouTube</small>
                 </label>
                 {m.online && (
                   <button className="linkbtn" onClick={() => window.confirm(`Make ${m.name} the owner? You’ll become a controller.`) && act(api.transferOwner(m.id))}>

@@ -1,4 +1,4 @@
-import { S, URL, check, step, summary, sleep, startServer, startWeb, stopAll, launch, newClient, create, join, loadVideo, ready, sample, spread, until, errors } from './lib.mjs';
+import { capbar, S, URL, check, step, summary, sleep, startServer, startWeb, stopAll, launch, newClient, create, join, loadVideo, ready, sample, spread, until, errors } from './lib.mjs';
 
 const browser = await launch();
 let code = '';
@@ -48,7 +48,7 @@ try {
   });
 
   await step('2. controller role + global Controller Power', async () => {
-    await A.page.locator('.members li', { hasText: 'Bob' }).locator('.switch').click();
+    await A.page.locator('.members li', { hasText: 'Bob' }).locator('.switch', { hasText: 'controller' }).click();
     check(await until(async () => /Controller/.test(await B.page.textContent('.bar-right .role'))), 'Bob is shown as Controller');
     await B.press('k');
     await sleep(2200);
@@ -182,7 +182,7 @@ try {
       const inside = await A.page.evaluate(() => document.fullscreenElement.contains(document.querySelector('button[aria-label="Hard Sync"]')));
       check(inside, 'Hard Sync button is inside the fullscreen element');
       await A.page.click('button[aria-label="Hard Sync"]');
-      check(await A.page.locator('.popover').isVisible(), 'Hard Sync menu opens in fullscreen');
+      check(await A.page.locator('.dock').isVisible(), 'Hard Sync menu opens in fullscreen');
       await A.press('Escape');
       await C.press('\\');
       await A.press('\\');
@@ -201,7 +201,7 @@ try {
     await sleep(800);
     await A.page.setInputFiles('input[accept=".srt,.vtt"]', S + '/sub1.srt');
     check(await until(async () => (await Promise.all(all.map((c) => c.capInfo()))).every((i) => i.cues === 14), 6000), 'sub1.srt (14 cues) reaches all four browsers', JSON.stringify((await Promise.all(all.map((c) => c.capInfo()))).map((i) => i.cues)));
-    check((await B.page.textContent('.capbar')).includes('sub1.srt'), 'caption bar names the shared file and lines');
+    check((await capbar(B)).includes('sub1.srt'), 'caption bar names the shared file and lines');
     check((await A.capInfo()).mode === 'showing', 'captions are on by default');
 
     // timing follows each local timeline: seek, then check active cue at that point in every browser
@@ -225,8 +225,10 @@ try {
     await A.page.evaluate(() => {});
     const dur = await A.page.evaluate(() => document.querySelector('video').duration);
     // slider seek to 11s
-    await A.page.locator('.seek input').evaluate((el, v) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, String(v)); el.dispatchEvent(new Event('input', { bubbles: true })); }, 11);
-    await A.page.locator('.seek input').dispatchEvent('pointerup');
+    {
+      const box = await A.page.locator('.scrub').boundingBox();
+      await A.page.mouse.click(box.x + box.width * (11 / dur), box.y + box.height / 2);
+    }
     await sleep(1500);
     const p2 = await sample(all.slice(0, 3));
     const act2 = await Promise.all(all.slice(0, 3).map((c) => c.capInfo().then((i) => i.active[0] ?? null)));
@@ -278,7 +280,7 @@ try {
     // remove
     await A.page.locator('.capbar .linkbtn', { hasText: 'remove' }).click();
     check(await until(async () => (await Promise.all(all.map((c) => c.capInfo()))).every((i) => i.cues === 0), 5000), 'removal clears every player');
-    check((await D.page.textContent('.capbar')).includes('No shared captions'), 'UI says no shared captions');
+    check((await capbar(D)).includes('No shared captions'), 'UI says no shared captions');
   });
 
   await step('7. late join receives current captions and playback', async () => {
@@ -288,7 +290,7 @@ try {
     await sleep(1500);
     const E = await newClient(browser, 'Eve', { width: 1024, height: 768 });
     await join(E, code);
-    check((await E.page.textContent('.capbar')).includes('sub1.srt') || (await until(async () => (await E.page.textContent('.capbar')).includes('sub1.srt'), 4000)), 'late joiner sees the shared captions before loading any video');
+    check((await capbar(E)).includes('sub1.srt') || (await until(async () => (await capbar(E)).includes('sub1.srt'), 4000)), 'late joiner sees the shared captions before loading any video');
     await loadVideo(E);
     check(await until(async () => (await E.capInfo()).cues === 14, 5000), 'captions applied once her player exists');
     await ready(E);
@@ -307,11 +309,11 @@ try {
     await A.page.fill('#nm', 'Alice');
     await A.page.evaluate(() => document.activeElement?.blur());
     await A.press('?');
-    check(await A.page.locator('.modal').isVisible(), '? opens the shortcut guide');
-    const txt = await A.page.textContent('.modal');
+    check(await A.page.locator('.dock').isVisible(), '? opens the shortcut guide');
+    const txt = await A.page.textContent('.dock');
     check(['Hard Sync', 'Picture-in-picture', 'Fullscreen', 'Captions', 'Mute', 'Volume'].every((w) => txt.includes(w)), 'guide documents the shortcuts');
     await A.press('Escape');
-    check(!(await A.page.locator('.modal').isVisible()), 'Escape closes it');
+    check(!(await A.page.locator('.dock').isVisible()), 'Escape closes it');
   });
 
   await step('9. themes + responsive screenshots', async () => {

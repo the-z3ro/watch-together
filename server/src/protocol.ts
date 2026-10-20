@@ -2,6 +2,14 @@
 
 export type Role = 'owner' | 'controller' | 'participant';
 
+/** What the room is watching. Everyone always plays their own copy; only the timeline is shared. */
+export type MediaState = { kind: 'file' } | { kind: 'youtube'; videoId: string; startAt: number };
+
+/** Why a member's own player can't show the shared YouTube video (set by that member's client). */
+export type MediaIssue = 'blocked' | 'unavailable' | 'live';
+
+export const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+
 export interface FileInfo {
   name: string;
   size: number;
@@ -40,6 +48,9 @@ export interface MemberView {
   canControl: boolean;
   file: FileInfo | null;
   ready: boolean;
+  /** Right to load a YouTube video / switch media for everyone. The owner always has it; others only when the owner grants it. */
+  canLoadMedia: boolean;
+  mediaIssue: MediaIssue | null;
 }
 
 export interface CaptionMeta {
@@ -70,6 +81,9 @@ export interface RoomSnapshot {
   ownerId: string | null;
   settings: RoomSettings;
   playback: PlaybackState;
+  /** The shared media and its version (bumps whenever it is replaced). */
+  media: MediaState;
+  mediaV: number;
   captions: CaptionMeta | null;
   members: MemberView[];
 }
@@ -85,6 +99,9 @@ export type CommandBody =
   | { type: 'captions:clear' }
   | { type: 'role:set'; memberId: string; role: 'controller' | 'participant' }
   | { type: 'settings'; controllerPower?: boolean; controllersCanSyncAll?: boolean }
+  | { type: 'media:youtube'; videoId: string; startAt: number }
+  | { type: 'media:file' }
+  | { type: 'member:grant'; memberId: string; canLoadMedia: boolean }
   | { type: 'owner:transfer'; memberId: string }
   | { type: 'room:close' };
 
@@ -106,7 +123,7 @@ export interface CreatePayload {
   name: string;
   /** Re-create a specific room after a server restart (only possible if the code is free). */
   roomId?: string;
-  restore?: { position: number; playing: boolean; rate: number };
+  restore?: { position: number; playing: boolean; rate: number; media?: MediaState };
 }
 
 export type CreateResult = { ok: true; roomId: string } | { ok: false; error: 'bad_request' | 'taken' };
@@ -115,6 +132,7 @@ export interface MemberPatch {
   name?: string;
   file?: FileInfo | null;
   ready?: boolean;
+  mediaIssue?: MediaIssue | null;
 }
 
 export interface ClientToServerEvents {
@@ -153,4 +171,6 @@ export const LIMITS = {
   maxCaptionBytes: 1_500_000,
   /** socket.io payload ceiling; must exceed maxCaptionBytes. */
   maxMessageBytes: 2_500_000,
+  /** Longest start offset accepted for a YouTube link (seconds). */
+  maxStartAt: 86_400,
 } as const;

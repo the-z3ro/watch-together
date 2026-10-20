@@ -6,6 +6,8 @@ import {
   type Command,
   type ErrorCode,
   type FileInfo,
+  type MediaIssue,
+  type MediaState,
   type MemberPatch,
   type MemberView,
   type PlaybackState,
@@ -21,6 +23,9 @@ export interface Member {
   role: Role;
   file: FileInfo | null;
   ready: boolean;
+  /** Owner-granted right to load media for everyone (independent of role). */
+  grantLoad: boolean;
+  mediaIssue: MediaIssue | null;
   joinedAt: number;
   ownerTimer: ReturnType<typeof setTimeout> | null;
   cmdTimes: number[];
@@ -54,6 +59,8 @@ export class Room {
   settings: RoomSettings = { controllerPower: true, controllersCanSyncAll: false };
   playback: PlaybackState;
   captions: CaptionData | null = null;
+  media: MediaState = { kind: 'file' };
+  mediaV = 1;
   readonly members = new Map<string, Member>();
   emptySince: number | null;
   private readonly seen = new Map<string, CmdResult>();
@@ -63,8 +70,9 @@ export class Room {
     readonly id: string,
     now: number,
     private readonly leadMs: number,
-    restore?: { position: number; playing: boolean; rate: number },
+    restore?: { position: number; playing: boolean; rate: number; media?: MediaState },
   ) {
+    if (restore?.media) this.media = restore.media;
     this.playback = {
       v: 1,
       playing: restore?.playing ?? false,
@@ -83,6 +91,9 @@ export class Room {
   }
   canControl(m: Member): boolean {
     return this.isOwner(m) || (m.role === 'controller' && this.settings.controllerPower);
+  }
+  canLoadMedia(m: Member): boolean {
+    return this.isOwner(m) || m.grantLoad;
   }
   canSyncAll(m: Member): boolean {
     return this.isOwner(m) || (this.canControl(m) && this.settings.controllersCanSyncAll);
@@ -120,6 +131,8 @@ export class Room {
         role: 'participant',
         file: null,
         ready: false,
+        grantLoad: false,
+        mediaIssue: null,
         joinedAt: now,
         ownerTimer: null,
         cmdTimes: [],
@@ -180,6 +193,7 @@ export class Room {
     if (patch.name && patch.name !== m.name) ((m.name = patch.name), (changed = true));
     if ('file' in patch && JSON.stringify(patch.file ?? null) !== JSON.stringify(m.file)) ((m.file = patch.file ?? null), (changed = true));
     if (patch.ready !== undefined && patch.ready !== m.ready) ((m.ready = patch.ready), (changed = true));
+    if (patch.mediaIssue !== undefined && patch.mediaIssue !== m.mediaIssue) ((m.mediaIssue = patch.mediaIssue), (changed = true));
     if (changed) this.touch();
     return changed;
   }
@@ -196,6 +210,8 @@ export class Room {
         canControl: this.canControl(m),
         file: m.file,
         ready: m.ready,
+        canLoadMedia: this.canLoadMedia(m),
+        mediaIssue: m.mediaIssue,
       }));
     return {
       id: this.id,
@@ -204,6 +220,8 @@ export class Room {
       ownerId: this.ownerId,
       settings: { ...this.settings },
       playback: { ...this.playback },
+      media: { ...this.media },
+      mediaV: this.mediaV,
       captions: this.captions ? { ...this.captions.meta } : null,
       members,
     };
@@ -253,6 +271,23 @@ export class Room {
     return this.ok();
   }
 
+  /** Swap the shared media: playback restarts paused at `position`, shared captions no longer apply, stale commands (old basePv) fail. */
+  private replaceMedia(next: MediaState, position: number, by: Member, fx: Effects, notice: string, now: number): CmdResult {
+    this.media = next;
+    this.mediaV++;
+    if (next.kind === 'youtube' && this.captions) {
+      this.captions = null;
+      this.capVersion++;
+      fx.captions = null;
+    }
+    for (const x of this.members.values()) x.mediaIssue = null;
+    const pb = this.playback;
+    this.playback = { ...pb, v: pb.v + 1, playing: false, position, at: now, rate: 1, by: by.id };
+    fx.notices.push({ text: notice, kind: 'info' });
+    this.touch();
+    return this.ok();
+  }
+
   private exec(m: Member, cmd: Command, now: number, fx: Effects): CmdResult {
     const pb = this.playback;
     const needControl = () => (this.canControl(m) ? null : this.fail('forbidden', 'Only the owner or a controller can do that.', true));
@@ -296,6 +331,7 @@ export class Room {
       case 'captions:set': {
         const denied = needControl();
         if (denied) return denied;
+        if (this.media.kind !== 'file') return this.fail('bad_request', 'Shared captions are only for local video files. Use YouTube’s own captions instead.');
         const check = normalizeCues(cmd.cues);
         if (!check.ok) return this.fail(check.error, check.message);
         const hash = hashCues(check.cues);
@@ -345,12 +381,38 @@ export class Room {
         return this.ok();
       }
 
+      case 'media:youtube': {
+        if (!this.canLoadMedia(m)) return this.fail('forbidden', 'Only the owner — or someone the owner allows — can load a YouTube video.', true);
+        const cur = this.media;
+        if (cur.kind === 'youtube' && cur.videoId === cmd.videoId && cur.startAt === cmd.startAt) return this.ok(true);
+        return this.replaceMedia({ kind: 'youtube', videoId: cmd.videoId, startAt: cmd.startAt }, cmd.startAt, m, fx, `${m.name} loaded a YouTube video`, now);
+      }
+
+      case 'media:file': {
+        if (!this.canLoadMedia(m)) return this.fail('forbidden', 'Only the owner — or someone the owner allows — can switch the video.', true);
+        if (this.media.kind === 'file') return this.ok(true);
+        return this.replaceMedia({ kind: 'file' }, 0, m, fx, `${m.name} switched back to local video files`, now);
+      }
+
+      case 'member:grant': {
+        const denied = ownerOnly();
+        if (denied) return denied;
+        const target = this.members.get(cmd.memberId);
+        if (!target || target.id === this.ownerId) return this.fail('bad_request', 'That person can’t be changed.');
+        if (target.grantLoad === cmd.canLoadMedia) return this.ok(true);
+        target.grantLoad = cmd.canLoadMedia;
+        fx.notices.push({ text: cmd.canLoadMedia ? `${target.name} can now load YouTube videos` : `${target.name} can no longer load YouTube videos`, kind: 'info' });
+        this.touch();
+        return this.ok();
+      }
+
       case 'owner:transfer': {
         const denied = ownerOnly();
         if (denied) return denied;
         const target = this.members.get(cmd.memberId);
         if (!target || target.id === m.id || !target.socketId) return this.fail('bad_request', 'Pick someone who is in the room.');
         m.role = 'controller';
+        m.grantLoad = false; // the ex-owner is an ordinary controller now; the new owner can re-grant
         target.role = 'owner';
         this.ownerId = target.id;
         fx.notices.push({ text: `${target.name} is now the owner`, kind: 'info' });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Icon from './Icon.js';
 import { fmtTime } from './engine.js';
 
@@ -19,14 +19,8 @@ interface Props {
 export default function SyncMenu({ canSyncAll, isOwner, others, position, startConfirm, onSyncMe, onSyncAll, onClose }: Props) {
   const [confirm, setConfirm] = useState(!!startConfirm && canSyncAll);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), onClose());
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
-
   return (
-    <div className="popover" role="dialog" aria-label="Hard Sync" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="syncmenu">
       {!confirm ? (
         <>
           <button className="pitem" onClick={() => (onSyncMe(), onClose())}>

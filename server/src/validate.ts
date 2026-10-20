@@ -1,4 +1,4 @@
-import { LIMITS, type CaptionCue, type Command, type CreatePayload, type FileInfo, type MemberPatch } from './protocol.js';
+import { LIMITS, YT_ID, type CaptionCue, type MediaIssue, type MediaState, type Command, type CreatePayload, type FileInfo, type MemberPatch } from './protocol.js';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -15,6 +15,19 @@ export function parseFile(v: unknown): FileInfo | null {
   return { name: cleanText(v.name, LIMITS.fileNameLen), size, duration };
 }
 
+export function parseMedia(v: unknown): MediaState | null {
+  if (!isObj(v)) return null;
+  if (v.kind === 'file') return { kind: 'file' };
+  if (v.kind === 'youtube' && typeof v.videoId === 'string' && YT_ID.test(v.videoId)) return { kind: 'youtube', videoId: v.videoId, startAt: parseStart(v.startAt) ?? 0 };
+  return null;
+}
+
+function parseStart(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= LIMITS.maxStartAt ? Math.floor(v) : null;
+}
+
+const ISSUES: readonly MediaIssue[] = ['blocked', 'unavailable', 'live'];
+
 export function parsePatch(v: unknown): MemberPatch | null {
   if (!isObj(v)) return null;
   const out: MemberPatch = {};
@@ -24,6 +37,7 @@ export function parsePatch(v: unknown): MemberPatch | null {
   }
   if ('file' in v) out.file = v.file === null ? null : parseFile(v.file);
   if ('ready' in v) out.ready = v.ready === true;
+  if ('mediaIssue' in v) out.mediaIssue = ISSUES.includes(v.mediaIssue as MediaIssue) ? (v.mediaIssue as MediaIssue) : null;
   return out;
 }
 
@@ -40,7 +54,7 @@ export function parseCreate(v: unknown): CreatePayload | null {
   if (isObj(v.restore)) {
     const r = v.restore;
     if (isPos(r.position) && typeof r.playing === 'boolean' && typeof r.rate === 'number' && r.rate >= LIMITS.minRate && r.rate <= LIMITS.maxRate)
-      out.restore = { position: r.position, playing: r.playing, rate: r.rate };
+      out.restore = { position: r.position, playing: r.playing, rate: r.rate, ...(parseMedia(r.media) ? { media: parseMedia(r.media) as MediaState } : {}) };
   }
   return out;
 }
@@ -78,6 +92,17 @@ export function parseCommand(v: unknown): Command | null {
       if (typeof v.controllersCanSyncAll === 'boolean') out.controllersCanSyncAll = v.controllersCanSyncAll;
       return out;
     }
+    case 'media:youtube': {
+      if (typeof v.videoId !== 'string' || !YT_ID.test(v.videoId)) return null;
+      const startAt = v.startAt === undefined ? 0 : parseStart(v.startAt);
+      return startAt === null ? null : { id, type: 'media:youtube', videoId: v.videoId, startAt };
+    }
+    case 'media:file':
+      return { id, type: 'media:file' };
+    case 'member:grant':
+      return isStr(v.memberId, LIMITS.idLen) && typeof v.canLoadMedia === 'boolean'
+        ? { id, type: 'member:grant', memberId: v.memberId, canLoadMedia: v.canLoadMedia }
+        : null;
     case 'owner:transfer':
       return isStr(v.memberId, LIMITS.idLen) ? { id, type: 'owner:transfer', memberId: v.memberId } : null;
     case 'room:close':

@@ -1,4 +1,4 @@
-import Icon from './Icon.js';
+import Sheet from './Sheet.js';
 
 export const SEEK = { short: 5, long: 15, big: 60 } as const;
 
@@ -18,41 +18,51 @@ export const SHORTCUTS: { keys: string[]; what: string; group: string }[] = [
   { group: 'You', keys: ['F'], what: 'Fullscreen' },
   { group: 'You', keys: ['C'], what: 'Captions on / off (just for you)' },
   { group: 'You', keys: ['M'], what: 'Mute / unmute' },
-  { group: 'You', keys: ['+', '-'], what: 'Volume up / down' },
+  { group: 'You', keys: ['+', '-', '↑', '↓'], what: 'Volume up / down' },
   { group: 'You', keys: ['P'], what: 'Picture-in-picture (where supported)' },
   { group: 'You', keys: ['?'], what: 'This guide' },
 ];
 
-export default function Help({ onClose }: { onClose: () => void }) {
+export const GESTURES = [
+  { how: 'Tap', what: 'Show or hide the controls' },
+  { how: 'Double-tap right / left', what: 'Forward / back 10 s (keep tapping to add 10 s each)' },
+  { how: 'Double-tap middle', what: 'Play / pause for everyone' },
+  { how: 'Swipe up / down on the right', what: 'Volume (just for you)' },
+  { how: 'Swipe sideways', what: 'Scrub through the video (owner / controllers)' },
+  { how: 'Pinch', what: 'Zoom the picture (local files)' },
+];
+
+export default function Help({ onClose, touch }: { onClose: () => void; touch: boolean }) {
   const groups = [...new Set(SHORTCUTS.map((s) => s.group))];
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onPointerDown={onClose}>
-      <div className="sheet" onPointerDown={(e) => e.stopPropagation()}>
-        <div className="sheet-head">
-          <h3>
-            <Icon name="keyboard" size={18} /> Keyboard shortcuts
-          </h3>
-          <button className="ic" onClick={onClose} aria-label="Close">
-            <Icon name="close" />
-          </button>
-        </div>
-        {groups.map((g) => (
-          <section key={g}>
-            <h4>{g}</h4>
-            {SHORTCUTS.filter((s) => s.group === g).map((s) => (
-              <div className="krow" key={s.what}>
-                <span className="kkeys">
-                  {s.keys.map((k) => (
-                    <kbd key={k}>{k}</kbd>
-                  ))}
-                </span>
-                <span>{s.what}</span>
-              </div>
-            ))}
-          </section>
-        ))}
-        <p className="hint">Only the owner and controllers can change shared playback. Shortcuts are ignored while you type in a text box. Arrow keys also seek ±5 s.</p>
-      </div>
-    </div>
+    <Sheet title={touch ? 'Gestures & shortcuts' : 'Keyboard shortcuts'} onClose={onClose}>
+      {touch && (
+        <section>
+          <h4>Touch gestures</h4>
+          {GESTURES.map((g) => (
+            <div className="krow wide" key={g.how}>
+              <b>{g.how}</b>
+              <span>{g.what}</span>
+            </div>
+          ))}
+        </section>
+      )}
+      {groups.map((g) => (
+        <section key={g}>
+          <h4>{g}</h4>
+          {SHORTCUTS.filter((s) => s.group === g).map((s) => (
+            <div className="krow" key={s.what}>
+              <span className="kkeys">
+                {s.keys.map((k) => (
+                  <kbd key={k}>{k}</kbd>
+                ))}
+              </span>
+              <span>{s.what}</span>
+            </div>
+          ))}
+        </section>
+      ))}
+      <p className="hint">Only the owner and controllers can change shared playback. Volume, captions and zoom are just for you. Shortcuts are ignored while you type.</p>
+    </Sheet>
   );
 }

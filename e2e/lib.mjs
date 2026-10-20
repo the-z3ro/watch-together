@@ -108,14 +108,14 @@ export async function create(c) {
   await c.page.goto(URL);
   await c.page.fill('#name', c.name);
   await c.page.click('text=Create a room');
-  await c.page.waitForSelector('.code', { timeout: 30000 });
-  return (await c.page.textContent('.code')).trim();
+  await c.page.waitForSelector('.theater', { timeout: 30000 });
+  return new globalThis.URL(c.page.url()).searchParams.get('r');
 }
 export async function join(c, code) {
   await c.page.goto(URL + '?r=' + code);
   await c.page.fill('#name', c.name);
   await c.page.click('text=Join room');
-  await c.page.waitForSelector('.code', { timeout: 30000 });
+  await c.page.waitForSelector('.theater', { timeout: 30000 });
 }
 export async function loadVideo(c, file = S + '/movie.webm') {
   await c.page.setInputFiles('input[accept^="video"]', file);
@@ -141,4 +141,10 @@ export async function until(fn, ms = 8000, every = 100) {
     if (Date.now() - t0 > ms) return false;
     await sleep(every);
   }
+}
+
+/** Caption bar text; on stacked (phone/tablet) layouts it lives in the Media tab. */
+export async function capbar(c) {
+  if (!(await c.page.locator('.capbar').count())) await c.page.locator('.tabs button', { hasText: 'Media' }).click();
+  return c.page.locator('.capbar').first().textContent({ timeout: 5000 });
 }

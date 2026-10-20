@@ -26,7 +26,7 @@ try {
     for (const c of [A, B, C, D]) await loadVideo(c);
     await sleep(600);
     for (const c of [A, B, C, D]) await ready(c);
-    await A.page.locator('.members li', { hasText: 'Bob' }).locator('.switch').click();
+    await A.page.locator('.members li', { hasText: 'Bob' }).locator('.switch', { hasText: 'controller' }).click();
     await A.hover(); await A.press('k');
     await sleep(2500);
     const p = await sample([A, B, C, D]);
@@ -60,7 +60,7 @@ try {
   });
 
   await step('revocation takes effect immediately', async () => {
-    await A.page.locator('.members li', { hasText: 'Bob' }).locator('.switch').click();
+    await A.page.locator('.members li', { hasText: 'Bob' }).locator('.switch', { hasText: 'controller' }).click();
     check(await until(async () => /Viewer/.test(await B.page.textContent('.bar-right .role')), 4000), 'Bob becomes a viewer');
     const before = await A.pos();
     await B.hover(); await B.press('k'); await B.press('l');
@@ -86,7 +86,7 @@ try {
   });
 
   await step('owner disconnect: controller-first promotion after the grace period', async () => {
-    await C.page.locator('.members li', { hasText: 'Dan' }).locator('.switch').click();
+    await C.page.locator('.members li', { hasText: 'Dan' }).locator('.switch', { hasText: 'controller' }).click();
     await sleep(500);
     await C.ctx.close();
     check(await until(async () => /Owner/.test(await A.page.textContent('.bar-right .role')) || /Owner/.test(await D.page.textContent('.bar-right .role')), 50000, 500), 'after ~30 s a controller is promoted to owner');
